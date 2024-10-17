@@ -10,6 +10,7 @@ const Voice = struct {
     channel: i16,
     key: i16,
     phase: f32,
+    velocity: f32,
 };
 
 const Plugin = struct {
@@ -189,6 +190,7 @@ const Plugin = struct {
                         .channel = noteEvent.*.channel,
                         .phase = 0.0,
                         .key = noteEvent.*.key,
+                        .velocity = @floatCast(noteEvent.*.velocity),
                     }) catch unreachable;
                 }
             }
@@ -207,7 +209,8 @@ const Plugin = struct {
 
             for (plugin.voices.items) |*voice| {
                 if (!voice.held) continue;
-                sum += std.math.sin(voice.phase * 2 * std.math.pi) * 0.2;
+                const val = std.math.sin(voice.phase * std.math.tau);
+                sum += val * voice.velocity;
                 voice.phase += 440 * std.math.exp2(@as(f32, @floatFromInt(voice.key - 57)) / 12) / @as(f32, @floatCast(plugin.sampleRate));
                 voice.phase -= std.math.floor(voice.phase);
             }

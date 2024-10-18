@@ -6,11 +6,14 @@ var allocator: std.mem.Allocator = undefined;
 
 const Voice = struct {
     held: bool,
+    ended: bool = false,
     noteId: i32,
     channel: i16,
     key: i16,
     phase: f32,
     velocity: f32,
+    tailLeft: f64,
+    tailTotal: f64,
 };
 
 const Plugin = struct {
@@ -18,6 +21,7 @@ const Plugin = struct {
     host: [*c]const clap.clap_host,
     sampleRate: f64 = 44100,
     voices: std.ArrayList(Voice),
+    tailTime: f64 = 2.0 / 1000.0,
 
     fn create(host: [*c]const clap.clap_host) [*c]clap.clap_plugin {
         var p = allocator.create(Plugin) catch unreachable;
@@ -137,8 +141,10 @@ const Plugin = struct {
             frameIndex = nextEventFrame;
         }
 
-        for (plugin.voices.items, 0..) |voice, i| {
-            if (!voice.held) {
+        var i: usize = plugin.voices.items.len;
+        while (i > 0) : (i -= 1) {
+            const voice = plugin.voices.items[i - 1];
+            if (voice.ended) {
                 const event = clap.clap_event_note{
                     .header = clap.clap_event_header{
                         .size = @sizeOf(clap.clap_event_note),
@@ -154,7 +160,7 @@ const Plugin = struct {
                 };
 
                 _ = clap_process.*.out_events.*.try_push.?(clap_process.*.out_events, &event.header);
-                plugin.voices.items[i] = undefined;
+                _ = plugin.voices.swapRemove(i - 1);
             }
         }
 
@@ -169,14 +175,14 @@ const Plugin = struct {
             {
                 const noteEvent = std.zig.c_translation.cast([*c]clap.clap_event_note, event);
 
-                for (plugin.voices.items, 0..) |*voice, i| {
+                for (plugin.voices.items) |*voice| {
                     if ((noteEvent.*.key == -1 or voice.key == noteEvent.*.key) and
                         (noteEvent.*.note_id == -1 or voice.noteId == noteEvent.*.note_id) and
                         (noteEvent.*.channel == -1 or voice.channel == noteEvent.*.channel))
                     {
-                        // choke should end the note immediately
                         if (event.*.type == clap.CLAP_EVENT_NOTE_CHOKE) {
-                            plugin.voices.items[i] = undefined;
+                            voice.held = false;
+                            voice.ended = true;
                         } else {
                             voice.held = false;
                         }
@@ -191,6 +197,8 @@ const Plugin = struct {
                         .phase = 0.0,
                         .key = noteEvent.*.key,
                         .velocity = @floatCast(noteEvent.*.velocity),
+                        .tailLeft = @floor(plugin.sampleRate * plugin.tailTime),
+                        .tailTotal = @floor(plugin.sampleRate * plugin.tailTime),
                     }) catch unreachable;
                 }
             }
@@ -208,9 +216,20 @@ const Plugin = struct {
             var sum: f32 = 0;
 
             for (plugin.voices.items) |*voice| {
-                if (!voice.held) continue;
+                if (voice.ended) continue;
+                if (!voice.held and voice.tailLeft == 0.0) {
+                    voice.ended = true;
+                    continue;
+                }
+
+                var mult: f32 = 1;
+                if (!voice.held and voice.tailLeft > 0.0) {
+                    voice.tailLeft -= 1;
+                    mult = @floatCast(voice.tailLeft / voice.tailTotal);
+                }
+
                 const val = std.math.sin(voice.phase * std.math.tau);
-                sum += val * voice.velocity;
+                sum += val * voice.velocity * mult;
                 voice.phase += 440 * std.math.exp2(@as(f32, @floatFromInt(voice.key - 57)) / 12) / @as(f32, @floatCast(plugin.sampleRate));
                 voice.phase -= std.math.floor(voice.phase);
             }

@@ -12,8 +12,96 @@ const Voice = struct {
     key: i16,
     phase: f32,
     velocity: f32,
-    tailLeft: f64,
-    tailTotal: f64,
+    envelope: Envelope,
+};
+
+const Envelope = struct {
+    state: State = State.attack,
+    attack: Stage,
+    decay: Stage,
+    release: Stage,
+    currentMult: f32 = 0,
+
+    const State = enum { attack, decay, sustain, release, end };
+
+    const Stage = struct {
+        samplesLeft: f32,
+        samplesTotal: f32,
+        startMultiplier: f32 = 0, // Set this to currentMult when stage started
+        endMultiplier: f32,
+        calculateMult: *const fn (self: *Stage) f32 = &linear,
+
+        fn init(sampleRate: f64, durationMs: f32, target: f32) Stage {
+            const releaseTotal: f32 = @floor(@as(f32, @floatCast(sampleRate)) * durationMs / 1000.0);
+            return Stage{
+                .samplesLeft = releaseTotal,
+                .samplesTotal = releaseTotal,
+                .endMultiplier = target,
+            };
+        }
+
+        fn getMult(self: *Stage) f32 {
+            return self.calculateMult(self);
+        }
+
+        fn linear(self: *Stage) f32 {
+            const difference = self.endMultiplier - self.startMultiplier;
+            const percentLeft = if (self.samplesTotal == 0) 0 else self.samplesLeft / self.samplesTotal;
+
+            return self.endMultiplier - (difference * percentLeft);
+        }
+
+        fn constant(self: *Stage) f32 {
+            return self.endMultiplier;
+        }
+    };
+
+    fn apply(self: *Envelope, value: f32) f32 {
+        const mult = switch (self.state) {
+            State.attack => self.attack.getMult(),
+            State.decay => self.decay.getMult(),
+            State.sustain => self.currentMult,
+            State.release => self.release.getMult(),
+            State.end => 0,
+        };
+
+        self.currentMult = mult;
+
+        return value * mult;
+    }
+
+    fn advance(self: *Envelope) void {
+        switch (self.state) {
+            State.attack => {
+                self.attack.samplesLeft -= 1;
+                if (self.attack.samplesLeft <= 0) {
+                    self.decay.startMultiplier = self.currentMult;
+                    self.state = State.decay;
+                }
+            },
+            State.decay => {
+                self.decay.samplesLeft -= 1;
+                if (self.decay.samplesLeft <= 0) self.state = State.sustain;
+            },
+            State.sustain => {
+                self.release.startMultiplier = self.currentMult;
+                self.state = State.release;
+            },
+            State.release => {
+                self.release.samplesLeft -= 1;
+                if (self.release.samplesLeft <= 0) self.state = State.end;
+            },
+            State.end => {},
+        }
+    }
+
+    fn default(sampleRate: f64) Envelope {
+        return Envelope{
+            .attack = Stage.init(sampleRate, 2, 1),
+            .decay = Stage.init(sampleRate, 2, 1),
+            .release = Stage.init(sampleRate, 2, 0),
+        };
+    }
 };
 
 const Plugin = struct {
@@ -181,10 +269,12 @@ const Plugin = struct {
                         (noteEvent.*.channel == -1 or voice.channel == noteEvent.*.channel))
                     {
                         if (event.*.type == clap.CLAP_EVENT_NOTE_CHOKE) {
-                            voice.held = false;
                             voice.ended = true;
                         } else {
                             voice.held = false;
+                            while (voice.envelope.state != Envelope.State.release) {
+                                voice.envelope.advance();
+                            }
                         }
                     }
                 }
@@ -197,8 +287,7 @@ const Plugin = struct {
                         .phase = 0.0,
                         .key = noteEvent.*.key,
                         .velocity = @floatCast(noteEvent.*.velocity),
-                        .tailLeft = @floor(plugin.sampleRate * plugin.tailTime),
-                        .tailTotal = @floor(plugin.sampleRate * plugin.tailTime),
+                        .envelope = Envelope.default(plugin.sampleRate),
                     }) catch unreachable;
                 }
             }
@@ -217,21 +306,16 @@ const Plugin = struct {
 
             for (plugin.voices.items) |*voice| {
                 if (voice.ended) continue;
-                if (!voice.held and voice.tailLeft == 0.0) {
+                if (voice.envelope.state == Envelope.State.end) {
                     voice.ended = true;
                     continue;
                 }
 
-                var mult: f32 = 1;
-                if (!voice.held and voice.tailLeft > 0.0) {
-                    voice.tailLeft -= 1;
-                    mult = @floatCast(voice.tailLeft / voice.tailTotal);
-                }
-
                 const val = std.math.sin(voice.phase * std.math.tau);
-                sum += val * voice.velocity * mult;
+                sum += voice.envelope.apply(val * voice.velocity);
                 voice.phase += 440 * std.math.exp2(@as(f32, @floatFromInt(voice.key - 57)) / 12) / @as(f32, @floatCast(plugin.sampleRate));
                 voice.phase -= std.math.floor(voice.phase);
+                if (voice.envelope.state != Envelope.State.sustain) voice.envelope.advance();
             }
 
             left[i] = sum;

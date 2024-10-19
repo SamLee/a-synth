@@ -4,11 +4,10 @@ pub fn build(b: *std.Build) void {
     const clap = b.dependency("clap", .{});
 
     const plugin = b.addSharedLibrary(.{
-        .name = "hello.clap",
+        .name = "sine.clap",
         .root_source_file = b.path("src/main.zig"),
         .target = b.standardTargetOptions(.{}),
         .optimize = b.standardOptimizeOption(.{}),
-        // .link_libc = true,
     });
     plugin.addIncludePath(clap.path("include"));
     b.installArtifact(plugin);
@@ -16,7 +15,7 @@ pub fn build(b: *std.Build) void {
     const validate_cmd = b.addSystemCommand(&.{
         "./clap-validator",
         "validate",
-        "zig-out/lib/libhello.clap.so",
+        "zig-out/lib/libsine.clap.so",
     });
     validate_cmd.step.dependOn(b.getInstallStep());
 

@@ -247,6 +247,7 @@ pub const Plugin = struct {
                     .sine => std.math.sin(voice.phase * std.math.tau),
                     .square => if (std.math.sin(voice.phase * std.math.tau) > 0.0) 1 else -1,
                     .saw => 2 * (voice.phase - std.math.floor(0.5 + voice.phase)),
+                    .triangle => 4 * @abs(voice.phase - std.math.floor(voice.phase + 0.75) + 0.25) - 1,
                 };
 
                 sum += voice.envelope.apply(val * voice.velocity);
@@ -427,5 +428,5 @@ const Params = struct {
     wave: Wave = Wave.sine,
 
     const Params = enum { wave };
-    const Wave = enum { sine, square, saw };
+    const Wave = enum { sine, square, saw, triangle };
 };

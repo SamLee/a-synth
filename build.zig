@@ -4,7 +4,7 @@ pub fn build(b: *std.Build) void {
     const clap = b.dependency("clap", .{});
 
     const plugin = b.addSharedLibrary(.{
-        .name = "sine.clap",
+        .name = "a-synth.clap",
         .root_source_file = b.path("src/main.zig"),
         .target = b.standardTargetOptions(.{}),
         .optimize = b.standardOptimizeOption(.{}),
@@ -15,7 +15,7 @@ pub fn build(b: *std.Build) void {
     const validate_cmd = b.addSystemCommand(&.{
         "./clap-validator",
         "validate",
-        "zig-out/lib/libsine.clap.so",
+        "zig-out/lib/liba-synth.clap.so",
     });
     validate_cmd.step.dependOn(b.getInstallStep());
 

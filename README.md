@@ -1,8 +1,8 @@
-# sine-clap
+# a-synth
 
 CLAP plugin written in zig, based on https://nakst.gitlab.io/tutorial/clap-part-1.html
 
-It makes sine waves.
+It makes waves.
 
 ## Build
 

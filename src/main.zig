@@ -7,14 +7,14 @@ var allocator: std.mem.Allocator = undefined;
 
 const pluginDescriptor = clap.clap_plugin_descriptor{
     .clap_version = clap.CLAP_VERSION,
-    .name = "Sine CLAP",
-    .id = "cksum.sine-clap",
+    .name = "A Synth",
+    .id = "cksum.a-synth",
     .vendor = "cksum",
     .url = "https://cksum.co.uk",
     .manual_url = "https://cksum.co.uk",
     .support_url = "https://cksum.co.uk",
     .version = "0.1.0",
-    .description = "Sine wave synth",
+    .description = "A synth",
     .features = &[_][*c]const u8{
         clap.CLAP_PLUGIN_FEATURE_INSTRUMENT,
         clap.CLAP_PLUGIN_FEATURE_SYNTHESIZER,

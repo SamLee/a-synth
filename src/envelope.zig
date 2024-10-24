@@ -7,19 +7,19 @@ pub const Envelope = struct {
 
     pub const State = enum { attack, decay, sustain, release, end };
 
-    const Stage = struct {
+    pub const Stage = struct {
         samplesLeft: f32,
         samplesTotal: f32,
         startMultiplier: f32 = 0, // Set this to currentMult when stage started
         endMultiplier: f32,
         calculateMult: *const fn (self: *Stage) f32 = &linear,
 
-        fn init(sampleRate: f64, durationMs: f32, target: f32) Stage {
-            const releaseTotal: f32 = @floor(@as(f32, @floatCast(sampleRate)) * durationMs / 1000.0);
+        pub fn init(sampleRate: f64, durationSeconds: f64, target: f64) Stage {
+            const releaseTotal: f64 = @floor(sampleRate * durationSeconds);
             return Stage{
-                .samplesLeft = releaseTotal,
-                .samplesTotal = releaseTotal,
-                .endMultiplier = target,
+                .samplesLeft = @floatCast(releaseTotal),
+                .samplesTotal = @floatCast(releaseTotal),
+                .endMultiplier = @floatCast(target),
             };
         }
 

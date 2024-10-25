@@ -11,6 +11,7 @@ const Voice = struct {
     key: i16,
     phase: f32,
     velocity: f32,
+    osc: usize,
     envelope: Envelope,
 };
 
@@ -194,6 +195,7 @@ pub const Plugin = struct {
                         } else {
                             voice.held = false;
                             while (voice.envelope.state != Envelope.State.release) {
+                                if (voice.envelope.state == Envelope.State.end) break;
                                 voice.envelope.advance();
                             }
                         }
@@ -208,6 +210,22 @@ pub const Plugin = struct {
                         .phase = 0.0,
                         .key = noteEvent.*.key,
                         .velocity = @floatCast(noteEvent.*.velocity),
+                        .osc = 0,
+                        .envelope = Envelope{
+                            .attack = Envelope.Stage.init(plugin.sampleRate, plugin.params.attackDuration, plugin.params.attackTarget),
+                            .decay = Envelope.Stage.init(plugin.sampleRate, plugin.params.decayDuration, plugin.params.decayTarget),
+                            .release = Envelope.Stage.init(plugin.sampleRate, plugin.params.releaseDuration, plugin.params.releaseTarget),
+                        },
+                    }) catch unreachable;
+
+                    plugin.voices.append(Voice{
+                        .held = true,
+                        .noteId = noteEvent.*.note_id,
+                        .channel = noteEvent.*.channel,
+                        .phase = 0.0,
+                        .key = noteEvent.*.key,
+                        .velocity = @floatCast(noteEvent.*.velocity),
+                        .osc = 1,
                         .envelope = Envelope{
                             .attack = Envelope.Stage.init(plugin.sampleRate, plugin.params.attackDuration, plugin.params.attackTarget),
                             .decay = Envelope.Stage.init(plugin.sampleRate, plugin.params.decayDuration, plugin.params.decayTarget),
@@ -241,7 +259,16 @@ pub const Plugin = struct {
                     continue;
                 }
 
-                const val: f32 = switch (plugin.params.wave) {
+                const osc = switch (voice.osc) {
+                    0 => plugin.params.osc1,
+                    1 => plugin.params.osc2,
+                    else => {
+                        std.log.err("Unrecognised osc id: {}", .{voice.osc});
+                        continue;
+                    },
+                };
+
+                var val: f32 = switch (osc) {
                     .sine => std.math.sin(voice.phase * std.math.tau),
                     .siney => block: {
                         const sine = std.math.sin(voice.phase * std.math.tau);
@@ -253,8 +280,21 @@ pub const Plugin = struct {
                     .noise => std.crypto.random.floatNorm(f32),
                 };
 
-                sum += voice.envelope.apply(val * voice.velocity);
-                voice.phase += 440 * std.math.exp2(@as(f32, @floatFromInt(voice.key - 57 + @as(i16, @intFromFloat(plugin.params.offset)))) / 12) / @as(f32, @floatCast(plugin.sampleRate));
+                if (plugin.params.highQuality == .off) {
+                    const noise = std.crypto.random.floatNorm(f32) / 200;
+                    // val = @round(val * 100) / 100;
+                    val += noise;
+                }
+
+                sum += voice.envelope.apply(0.5 * val * voice.velocity);
+
+                const offset: i16 = switch (voice.osc) {
+                    0 => @intFromFloat(plugin.params.offset),
+                    1 => @intFromFloat(plugin.params.offset1),
+                    else => unreachable,
+                };
+
+                voice.phase += 440 * std.math.exp2(@as(f32, @floatFromInt(voice.key - 57 + offset)) / 12) / @as(f32, @floatCast(plugin.sampleRate));
                 voice.phase -= std.math.floor(voice.phase);
                 if (voice.envelope.state != Envelope.State.sustain) voice.envelope.advance();
             }

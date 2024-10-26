@@ -5,6 +5,8 @@ const Plugin = @import("plugin.zig").Plugin;
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var allocator: std.mem.Allocator = undefined;
 
+pub const std_options = .{ .logFn = logFn };
+
 const pluginDescriptor = clap.clap_plugin_descriptor{
     .clap_version = clap.CLAP_VERSION,
     .name = "A Synth",
@@ -22,6 +24,21 @@ const pluginDescriptor = clap.clap_plugin_descriptor{
         null,
     },
 };
+
+fn logFn(
+    comptime level: std.log.Level,
+    comptime scope: @TypeOf(.EnumLiteral),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    const scope_prefix = "(" ++ @tagName(scope) ++ "): ";
+    const prefix = "[" ++ comptime level.asText() ++ "] " ++ scope_prefix;
+
+    std.debug.lockStdErr();
+    defer std.debug.unlockStdErr();
+    const stderr = std.io.getStdErr().writer();
+    nosuspend stderr.print(prefix ++ format ++ "\n", args) catch return;
+}
 
 fn init(_: [*c]const u8) callconv(.C) bool {
     allocator = gpa.allocator();

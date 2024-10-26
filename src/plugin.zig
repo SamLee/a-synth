@@ -282,7 +282,6 @@ pub const Plugin = struct {
 
                 if (plugin.params.highQuality == .off) {
                     const noise = std.crypto.random.floatNorm(f32) / 200;
-                    // val = @round(val * 100) / 100;
                     val += noise;
                 }
 

@@ -50,7 +50,7 @@ pub fn handleEvent(event: clap.clap_event_param_value, params: *Params) void {
                     log.debug("updating {s} {d:.2} => {d:.2}", .{ field.name, param.*, event.value });
                     param.* = event.value;
                 },
-                else => @panic(std.fmt.comptimePrint("TRIED TO UPDATED UNEXPECTED TYPE {}", .{field})),
+                else => @panic(std.fmt.comptimePrint("TRIED TO UPDATED UNEXPECTED TYPE {}", .{field.type})),
             }
         }
     }

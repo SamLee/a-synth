@@ -212,9 +212,9 @@ pub const Plugin = struct {
                         .velocity = @floatCast(noteEvent.*.velocity),
                         .osc = 0,
                         .envelope = Envelope{
-                            .attack = Envelope.Stage.init(plugin.sampleRate, plugin.params.attackDuration, plugin.params.attackTarget),
-                            .decay = Envelope.Stage.init(plugin.sampleRate, plugin.params.decayDuration, plugin.params.decayTarget),
-                            .release = Envelope.Stage.init(plugin.sampleRate, plugin.params.releaseDuration, plugin.params.releaseTarget),
+                            .attack = Envelope.Stage.init(plugin.sampleRate, plugin.params.attackDuration.value, plugin.params.attackTarget.value),
+                            .decay = Envelope.Stage.init(plugin.sampleRate, plugin.params.decayDuration.value, plugin.params.decayTarget.value),
+                            .release = Envelope.Stage.init(plugin.sampleRate, plugin.params.releaseDuration.value, plugin.params.releaseTarget.value),
                         },
                     }) catch unreachable;
 
@@ -227,9 +227,9 @@ pub const Plugin = struct {
                         .velocity = @floatCast(noteEvent.*.velocity),
                         .osc = 1,
                         .envelope = Envelope{
-                            .attack = Envelope.Stage.init(plugin.sampleRate, plugin.params.attackDuration, plugin.params.attackTarget),
-                            .decay = Envelope.Stage.init(plugin.sampleRate, plugin.params.decayDuration, plugin.params.decayTarget),
-                            .release = Envelope.Stage.init(plugin.sampleRate, plugin.params.releaseDuration, plugin.params.releaseTarget),
+                            .attack = Envelope.Stage.init(plugin.sampleRate, plugin.params.attackDuration.value, plugin.params.attackTarget.value),
+                            .decay = Envelope.Stage.init(plugin.sampleRate, plugin.params.decayDuration.value, plugin.params.decayTarget.value),
+                            .release = Envelope.Stage.init(plugin.sampleRate, plugin.params.releaseDuration.value, plugin.params.releaseTarget.value),
                         },
                     }) catch unreachable;
                 }
@@ -268,7 +268,7 @@ pub const Plugin = struct {
                     },
                 };
 
-                var val: f32 = switch (osc) {
+                var val: f32 = switch (osc.value) {
                     .sine => std.math.sin(voice.phase * std.math.tau),
                     .siney => block: {
                         const sine = std.math.sin(voice.phase * std.math.tau);
@@ -280,16 +280,22 @@ pub const Plugin = struct {
                     .noise => std.crypto.random.floatNorm(f32),
                 };
 
-                if (plugin.params.highQuality == .off) {
+                if (plugin.params.highQuality.value == .off) {
                     const noise = std.crypto.random.floatNorm(f32) / 200;
                     val += noise;
                 }
 
-                sum += voice.envelope.apply(0.5 * val * voice.velocity);
+                const volume: f32 = switch (voice.osc) {
+                    0 => @floatCast(plugin.params.vol1.value),
+                    1 => @floatCast(plugin.params.vol2.value),
+                    else => unreachable,
+                };
+
+                sum += voice.envelope.apply(0.5 * val * voice.velocity * volume / 100);
 
                 const offset: i16 = switch (voice.osc) {
-                    0 => @intFromFloat(plugin.params.offset),
-                    1 => @intFromFloat(plugin.params.offset1),
+                    0 => @intFromFloat(plugin.params.offset1.value),
+                    1 => @intFromFloat(plugin.params.offset2.value),
                     else => unreachable,
                 };
 

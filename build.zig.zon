@@ -1,18 +1,16 @@
 .{
     .name = "zig-clap",
-
     .version = "0.0.0",
-
     .dependencies = .{
         .clap = .{ .url = "https://github.com/free-audio/clap/archive/refs/tags/1.2.2.tar.gz", .hash = "12204f573701c6605bb3ce4f18c2a7ce1fe3be72fa643e59ea09e46b70c9131a3479" },
+        .@"zig-webui" = .{
+            .url = "https://github.com/webui-dev/zig-webui/archive/main.tar.gz",
+            .hash = "12201dd18157b3610dd5e1dc66476c0f563e0b83344be8fc76b03de436e258d950c8",
+        },
     },
-
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "src",
-        // For example...
-        //"LICENSE",
-        //"README.md",
     },
 }

@@ -5,7 +5,7 @@ const Plugin = @import("plugin.zig").Plugin;
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var allocator: std.mem.Allocator = undefined;
 
-pub const std_options = .{ .logFn = logFn };
+pub const std_options = std.Options{ .logFn = logFn };
 
 const pluginDescriptor = clap.clap_plugin_descriptor{
     .clap_version = clap.CLAP_VERSION,

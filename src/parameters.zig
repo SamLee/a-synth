@@ -11,7 +11,7 @@ pub const Params = struct {
             .module = "Oscillator 1/",
             .displayFormat = "{s}",
             .min = 0,
-            .max = @typeInfo(Wave).Enum.fields.len - 1,
+            .max = @typeInfo(Wave).@"enum".fields.len - 1,
             .flags = clap.CLAP_PARAM_IS_ENUM | clap.CLAP_PARAM_IS_STEPPED | clap.CLAP_PARAM_IS_AUTOMATABLE,
         },
     },
@@ -22,7 +22,7 @@ pub const Params = struct {
             .module = "Oscillator 2/",
             .displayFormat = "{s}",
             .min = 0,
-            .max = @typeInfo(Wave).Enum.fields.len - 1,
+            .max = @typeInfo(Wave).@"enum".fields.len - 1,
             .flags = clap.CLAP_PARAM_IS_ENUM | clap.CLAP_PARAM_IS_STEPPED | clap.CLAP_PARAM_IS_AUTOMATABLE,
         },
     },
@@ -121,7 +121,7 @@ pub const Params = struct {
             .module = "Quality",
             .displayFormat = "{s}",
             .min = 0,
-            .max = @typeInfo(HighQuality).Enum.fields.len - 1,
+            .max = @typeInfo(HighQuality).@"enum".fields.len - 1,
             .flags = clap.CLAP_PARAM_IS_ENUM | clap.CLAP_PARAM_IS_STEPPED | clap.CLAP_PARAM_IS_AUTOMATABLE,
         },
     },
@@ -175,13 +175,13 @@ pub fn handleEvent(event: clap.clap_event_param_value, params: *Params) void {
             const param = &@field(params, field.name);
             const value = param.*.value;
             switch (@typeInfo(@TypeOf(value))) {
-                .Enum => {
+                .@"enum" => {
                     const enumId: usize = @intFromFloat(event.value);
                     const newValue = @as(@TypeOf(value), @enumFromInt(enumId));
                     log.debug("updating {s} {} => {}", .{ field.name, value, newValue });
                     param.*.value = newValue;
                 },
-                .Float => {
+                .float => {
                     log.debug("updating {s} {d:.2} => {d:.2}", .{ field.name, value, event.value });
                     param.*.value = event.value;
                 },
@@ -257,8 +257,8 @@ pub const extensionParams = struct {
             if (id == index) {
                 const param = @field(plugin.params, field.name);
                 const paramValue: f64 = switch (@typeInfo(@TypeOf(param.value))) {
-                    .Enum => @floatFromInt(@intFromEnum(param.value)),
-                    .Float => param.value,
+                    .@"enum" => @floatFromInt(@intFromEnum(param.value)),
+                    .float => param.value,
                     else => @compileError(std.fmt.comptimePrint("UNEXPECTED TYPE {}", .{field.type})),
                 };
 
@@ -286,14 +286,14 @@ pub const extensionParams = struct {
         inline for (typeInfo, 0..) |field, index| {
             if (id == index) {
                 const param = @field(plugin.params, field.name);
-                const format = @as(*@TypeOf(param), @constCast(@alignCast(@ptrCast(field.default_value.?)))).*.meta.displayFormat;
+                const format = field.defaultValue().?.meta.displayFormat;
                 switch (@typeInfo(@TypeOf(param.value))) {
-                    .Enum => {
+                    .@"enum" => {
                         const enumId: usize = @intFromFloat(value);
                         const enumValue: @TypeOf(param.value) = @enumFromInt(enumId);
                         _ = std.fmt.bufPrint(buf, format, .{@tagName(enumValue)}) catch unreachable;
                     },
-                    .Float => {
+                    .float => {
                         _ = std.fmt.bufPrint(buf, format, .{value}) catch unreachable;
                     },
                     else => @compileError(std.fmt.comptimePrint("UNEXPECTED TYPE {}", .{field.type})),
@@ -324,12 +324,12 @@ pub const extensionParams = struct {
                 const clean = string[before .. string.len - after];
 
                 const value: f64 = switch (@typeInfo(@TypeOf(param.value))) {
-                    .Enum => block: {
+                    .@"enum" => block: {
                         const enumValue = std.meta.stringToEnum(@TypeOf(param.value), clean);
                         if (enumValue == null) return false;
                         break :block @floatFromInt(@intFromEnum(enumValue.?));
                     },
-                    .Float => std.fmt.parseFloat(f64, clean) catch return false,
+                    .float => std.fmt.parseFloat(f64, clean) catch return false,
                     else => @compileError(std.fmt.comptimePrint("UNEXPECTED TYPE {}", .{field.type})),
                 };
 

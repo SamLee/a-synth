@@ -2,7 +2,6 @@ const std = @import("std");
 const clap = @cImport(@cInclude("clap/clap.h"));
 const Envelope = @import("envelope.zig").Envelope;
 const parameters = @import("parameters.zig");
-const webui = @import("webui");
 
 const Voice = struct {
     held: bool,
@@ -24,7 +23,6 @@ pub const Plugin = struct {
     tailTime: f64 = 2.0 / 1000.0,
     allocator: std.mem.Allocator,
     params: parameters.Params = parameters.Params{},
-    window: webui,
 
     pub fn create(
         host: [*c]const clap.clap_host,
@@ -51,61 +49,9 @@ pub const Plugin = struct {
             .host = host,
             .voices = std.ArrayList(Voice).init(allocator),
             .allocator = allocator,
-            .window = webui.newWindow(),
         };
-
-        _ = p.window.setRootFolder("src/ui");
-        _ = p.window.setFileHandler(uiFileHandler);
-        _ = p.window.bind("updateSynth", updateSynth);
-        _ = p.window.setSize(900, 450);
-        _ = p.window.show("index.html");
 
         return &p.plugin;
-    }
-
-    fn buildResponse(comptime body: []const u8, comptime mime: []const u8) []const u8 {
-        const response = std.fmt.comptimePrint(
-            \\HTTP/1.1 200 OK
-            \\Content-Type: {s}
-            \\Content-Length: {}
-            \\
-            \\{s}
-        , .{ mime, body.len, body });
-
-        return response;
-    }
-
-    fn uiFileHandler(filename: []const u8) ?[]const u8 {
-        const response = if (std.mem.eql(u8, filename, "/index.html"))
-            buildResponse(@embedFile("ui/index.html"), "text/html")
-        else if (std.mem.eql(u8, filename, "/script.js"))
-            buildResponse(@embedFile("ui/script.js"), "application/javascript")
-        else if (std.mem.eql(u8, filename, "/style.css"))
-            buildResponse(@embedFile("ui/style.css"), "text/css")
-        else if (std.mem.eql(u8, filename, "/waves/sine.svg"))
-            buildResponse(@embedFile("ui/waves/sine.svg"), "image/svg+xml")
-        else if (std.mem.eql(u8, filename, "/waves/saw.svg"))
-            buildResponse(@embedFile("ui/waves/saw.svg"), "image/svg+xml")
-        else if (std.mem.eql(u8, filename, "/waves/siney.svg"))
-            buildResponse(@embedFile("ui/waves/siney.svg"), "image/svg+xml")
-        else if (std.mem.eql(u8, filename, "/waves/noise.svg"))
-            buildResponse(@embedFile("ui/waves/noise.svg"), "image/svg+xml")
-        else if (std.mem.eql(u8, filename, "/waves/square.svg"))
-            buildResponse(@embedFile("ui/waves/square.svg"), "image/svg+xml")
-        else if (std.mem.eql(u8, filename, "/waves/triangle.svg"))
-            buildResponse(@embedFile("ui/waves/triangle.svg"), "image/svg+xml")
-        else {
-            return null;
-        };
-
-        return response;
-    }
-
-    fn updateSynth(e: *webui.Event) void {
-        const param = e.getStringAt(0);
-        const value = e.getFloatAt(1);
-
-        std.log.debug("updateSynth: {s} {d:2}\n", .{ param, value });
     }
 
     fn init(_: [*c]const clap.clap_plugin) callconv(.C) bool {
@@ -115,8 +61,6 @@ pub const Plugin = struct {
     fn destroy(clap_plugin: [*c]const clap.clap_plugin) callconv(.C) void {
         const plugin: *Plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
         plugin.allocator.destroy(plugin);
-        webui.wait();
-        webui.clean();
     }
 
     fn activate(

@@ -1,5 +1,5 @@
 const std = @import("std");
-const clap = @cImport(@cInclude("clap/clap.h"));
+const clap = @import("clap.zig").clap;
 const Plugin = @import("plugin.zig").Plugin;
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -31,24 +31,25 @@ fn logFn(
     comptime format: []const u8,
     args: anytype,
 ) void {
+    // _ = level;
+    // _ = scope;
+    // _ = format;
+    // _ = args;
     const scope_prefix = "(" ++ @tagName(scope) ++ "): ";
     const prefix = "[" ++ comptime level.asText() ++ "] " ++ scope_prefix;
 
-    std.debug.lockStdErr();
-    defer std.debug.unlockStdErr();
-    const stderr = std.io.getStdErr().writer();
-    nosuspend stderr.print(prefix ++ format ++ "\n", args) catch return;
+    std.debug.print(prefix ++ format ++ "\n", args);
 }
 
-fn init(_: [*c]const u8) callconv(.C) bool {
+fn init(_: [*c]const u8) callconv(.c) bool {
     allocator = gpa.allocator();
 
     return true;
 }
 
-fn deinit() callconv(.C) void {}
+fn deinit() callconv(.c) void {}
 
-fn get_factory(factoryId: [*c]const u8) callconv(.C) ?*const anyopaque {
+fn get_factory(factoryId: [*c]const u8) callconv(.c) ?*const anyopaque {
     if (std.mem.orderZ(u8, factoryId, &clap.CLAP_PLUGIN_FACTORY_ID) == .eq) {
         return &pluginFactory;
     } else {
@@ -56,14 +57,14 @@ fn get_factory(factoryId: [*c]const u8) callconv(.C) ?*const anyopaque {
     }
 }
 
-fn get_plugin_count(_: [*c]const clap.clap_plugin_factory) callconv(.C) u32 {
+fn get_plugin_count(_: [*c]const clap.clap_plugin_factory) callconv(.c) u32 {
     return 1;
 }
 
 fn get_plugin_descriptor(
     _: [*c]const clap.clap_plugin_factory,
     _: u32,
-) callconv(.C) *const clap.clap_plugin_descriptor {
+) callconv(.c) *const clap.clap_plugin_descriptor {
     return &pluginDescriptor;
 }
 
@@ -71,7 +72,7 @@ fn create_plugin(
     _: [*c]const clap.clap_plugin_factory,
     host: [*c]const clap.clap_host,
     pluginId: [*c]const u8,
-) callconv(.C) [*c]const clap.clap_plugin {
+) callconv(.c) [*c]const clap.clap_plugin {
     if (!clap.clap_version_is_compatible(host.*.clap_version) or
         std.mem.orderZ(u8, pluginId, pluginDescriptor.id) != .eq)
     {

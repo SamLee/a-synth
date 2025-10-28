@@ -1,5 +1,5 @@
 const std = @import("std");
-const clap = @cImport(@cInclude("clap/clap.h"));
+const clap = @import("clap.zig").clap;
 const Plugin = @import("plugin.zig").Plugin;
 const log = std.log.scoped(.parameters);
 
@@ -201,7 +201,7 @@ pub const extensionParams = struct {
         .text_to_value = text_to_value,
     };
 
-    fn count(_: [*c]const clap.clap_plugin) callconv(.C) u32 {
+    fn count(_: [*c]const clap.clap_plugin) callconv(.c) u32 {
         return std.meta.fields(Params).len;
     }
 
@@ -209,7 +209,7 @@ pub const extensionParams = struct {
         clap_plugin: [*c]const clap.clap_plugin,
         in: [*c]const clap.clap_input_events,
         _: [*c]const clap.clap_output_events,
-    ) callconv(.C) void {
+    ) callconv(.c) void {
         const plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
         const eventCount = in.*.size.?(in);
         var eventIndex: u32 = 0;
@@ -223,7 +223,7 @@ pub const extensionParams = struct {
         clap_plugin: [*c]const clap.clap_plugin,
         param_index: u32,
         param_info: [*c]clap.clap_param_info,
-    ) callconv(.C) bool {
+    ) callconv(.c) bool {
         const plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
         const typeInfo = std.meta.fields(Params);
         inline for (typeInfo, 0..) |field, index| {
@@ -236,9 +236,14 @@ pub const extensionParams = struct {
                     .flags = param.meta.flags,
                     .min_value = param.meta.min,
                     .max_value = param.meta.max,
+                    .default_value = switch (@typeInfo(@TypeOf(param.value))) {
+                        .@"enum" => @floatFromInt(@intFromEnum(param.value)),
+                        .float => param.value,
+                        else => @compileError(std.fmt.comptimePrint("UNEXPECTED TYPE {}", .{field.type})),
+                    },
                 };
-                _ = std.fmt.bufPrint(&param_info.*.name, "{s}", .{param.meta.name}) catch unreachable;
-                _ = std.fmt.bufPrint(&param_info.*.module, "{s}", .{param.meta.module}) catch unreachable;
+                _ = std.fmt.bufPrintZ(&param_info.*.name, "{s}", .{param.meta.name}) catch unreachable;
+                _ = std.fmt.bufPrintZ(&param_info.*.module, "{s}", .{param.meta.module}) catch unreachable;
                 return true;
             }
         }
@@ -250,7 +255,7 @@ pub const extensionParams = struct {
         clap_plugin: [*c]const clap.clap_plugin,
         id: clap.clap_id,
         value: [*c]f64,
-    ) callconv(.C) bool {
+    ) callconv(.c) bool {
         const plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
         const typeInfo = std.meta.fields(Params);
         inline for (typeInfo, 0..) |field, index| {
@@ -278,7 +283,7 @@ pub const extensionParams = struct {
         value: f64,
         out: [*c]u8,
         size: u32,
-    ) callconv(.C) bool {
+    ) callconv(.c) bool {
         const buf = out[0..size];
 
         const plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
@@ -291,10 +296,10 @@ pub const extensionParams = struct {
                     .@"enum" => {
                         const enumId: usize = @intFromFloat(value);
                         const enumValue: @TypeOf(param.value) = @enumFromInt(enumId);
-                        _ = std.fmt.bufPrint(buf, format, .{@tagName(enumValue)}) catch unreachable;
+                        _ = std.fmt.bufPrintZ(buf, format, .{@tagName(enumValue)}) catch unreachable;
                     },
                     .float => {
-                        _ = std.fmt.bufPrint(buf, format, .{value}) catch unreachable;
+                        _ = std.fmt.bufPrintZ(buf, format, .{value}) catch unreachable;
                     },
                     else => @compileError(std.fmt.comptimePrint("UNEXPECTED TYPE {}", .{field.type})),
                 }
@@ -311,7 +316,7 @@ pub const extensionParams = struct {
         id: clap.clap_id,
         in: [*c]const u8,
         out: [*c]f64,
-    ) callconv(.C) bool {
+    ) callconv(.c) bool {
         const plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
         const typeInfo = std.meta.fields(Params);
         inline for (typeInfo, 0..) |field, index| {

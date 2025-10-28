@@ -1,5 +1,5 @@
 const std = @import("std");
-const clap = @cImport(@cInclude("clap/clap.h"));
+const clap = @import("clap.zig").clap;
 const Envelope = @import("envelope.zig").Envelope;
 const parameters = @import("parameters.zig");
 
@@ -47,19 +47,20 @@ pub const Plugin = struct {
                 .on_main_thread = on_main_thread,
             },
             .host = host,
-            .voices = std.ArrayList(Voice).init(allocator),
+            .voices = std.ArrayList(Voice).empty,
             .allocator = allocator,
         };
 
         return &p.plugin;
     }
 
-    fn init(_: [*c]const clap.clap_plugin) callconv(.C) bool {
+    fn init(_: [*c]const clap.clap_plugin) callconv(.c) bool {
         return true;
     }
 
-    fn destroy(clap_plugin: [*c]const clap.clap_plugin) callconv(.C) void {
+    fn destroy(clap_plugin: [*c]const clap.clap_plugin) callconv(.c) void {
         const plugin: *Plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
+        plugin.voices.deinit(plugin.allocator);
         plugin.allocator.destroy(plugin);
     }
 
@@ -68,7 +69,7 @@ pub const Plugin = struct {
         sampleRate: f64,
         minFramesCount: u32,
         maxFramesCount: u32,
-    ) callconv(.C) bool {
+    ) callconv(.c) bool {
         const plugin: *Plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
         plugin.sampleRate = sampleRate;
         _ = minFramesCount;
@@ -77,22 +78,22 @@ pub const Plugin = struct {
         return true;
     }
 
-    fn deactivate(_: [*c]const clap.clap_plugin) callconv(.C) void {}
+    fn deactivate(_: [*c]const clap.clap_plugin) callconv(.c) void {}
 
-    fn start_processing(_: [*c]const clap.clap_plugin) callconv(.C) bool {
+    fn start_processing(_: [*c]const clap.clap_plugin) callconv(.c) bool {
         return true;
     }
 
-    fn stop_processing(_: [*c]const clap.clap_plugin) callconv(.C) void {}
+    fn stop_processing(_: [*c]const clap.clap_plugin) callconv(.c) void {}
 
-    fn reset(_: [*c]const clap.clap_plugin) callconv(.C) void {}
+    fn reset(_: [*c]const clap.clap_plugin) callconv(.c) void {}
 
-    fn on_main_thread(_: [*c]const clap.clap_plugin) callconv(.C) void {}
+    fn on_main_thread(_: [*c]const clap.clap_plugin) callconv(.c) void {}
 
     fn get_extension(
         _: [*c]const clap.clap_plugin,
         id: [*c]const u8,
-    ) callconv(.C) ?*const anyopaque {
+    ) callconv(.c) ?*const anyopaque {
         if (std.mem.orderZ(u8, id, &clap.CLAP_EXT_NOTE_PORTS) == .eq) {
             return &extensionNotePorts.extension;
         }
@@ -111,7 +112,7 @@ pub const Plugin = struct {
     fn process(
         clap_plugin: [*c]const clap.clap_plugin,
         clap_process: [*c]const clap.clap_process,
-    ) callconv(.C) clap.clap_process_status {
+    ) callconv(.c) clap.clap_process_status {
         const plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
 
         if (clap_process.*.audio_inputs_count != 0) @panic("WHAT THE FUCK INPUTS");
@@ -203,7 +204,7 @@ pub const Plugin = struct {
                 }
 
                 if (event.*.type == clap.CLAP_EVENT_NOTE_ON) {
-                    plugin.voices.append(Voice{
+                    plugin.voices.append(plugin.allocator, Voice{
                         .held = true,
                         .noteId = noteEvent.*.note_id,
                         .channel = noteEvent.*.channel,
@@ -218,7 +219,7 @@ pub const Plugin = struct {
                         },
                     }) catch unreachable;
 
-                    plugin.voices.append(Voice{
+                    plugin.voices.append(plugin.allocator, Voice{
                         .held = true,
                         .noteId = noteEvent.*.note_id,
                         .channel = noteEvent.*.channel,
@@ -316,7 +317,7 @@ const extensionNotePorts = struct {
         .get = get,
     };
 
-    fn count(_: [*c]const clap.clap_plugin, isInput: bool) callconv(.C) u32 {
+    fn count(_: [*c]const clap.clap_plugin, isInput: bool) callconv(.c) u32 {
         return if (isInput) 1 else 0;
     }
 
@@ -325,12 +326,12 @@ const extensionNotePorts = struct {
         index: u32,
         isInput: bool,
         info: [*c]clap.clap_note_port_info,
-    ) callconv(.C) bool {
+    ) callconv(.c) bool {
         if (!isInput or index != 0) return false;
         info.*.id = 0;
         info.*.preferred_dialect = clap.CLAP_NOTE_DIALECT_CLAP;
         info.*.supported_dialects = clap.CLAP_NOTE_DIALECT_CLAP;
-        _ = std.fmt.bufPrint(&info.*.name, "Note Port", .{}) catch unreachable;
+        _ = std.fmt.bufPrintZ(&info.*.name, "Note Port", .{}) catch unreachable;
         return true;
     }
 };
@@ -341,7 +342,7 @@ const extensionAudioPorts = struct {
         .get = get,
     };
 
-    fn count(_: [*c]const clap.clap_plugin, isInput: bool) callconv(.C) u32 {
+    fn count(_: [*c]const clap.clap_plugin, isInput: bool) callconv(.c) u32 {
         return if (isInput) 0 else 1;
     }
 
@@ -350,7 +351,7 @@ const extensionAudioPorts = struct {
         index: u32,
         isInput: bool,
         info: [*c]clap.clap_audio_port_info,
-    ) callconv(.C) bool {
+    ) callconv(.c) bool {
         if (isInput or index != 0) return false;
         info.* = .{
             .id = 0,
@@ -360,7 +361,7 @@ const extensionAudioPorts = struct {
             .port_type = &clap.CLAP_PORT_STEREO,
             .in_place_pair = clap.CLAP_INVALID_ID,
         };
-        _ = std.fmt.bufPrint(&info.*.name, "Audio Port", .{}) catch unreachable;
+        _ = std.fmt.bufPrintZ(&info.*.name, "Audio Port", .{}) catch unreachable;
         return true;
     }
 };

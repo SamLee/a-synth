@@ -2,6 +2,7 @@ const std = @import("std");
 const clap = @import("clap.zig").clap;
 const Envelope = @import("envelope.zig").Envelope;
 const parameters = @import("parameters.zig");
+const logging = @import("logging.zig");
 
 const Voice = struct {
     held: bool,
@@ -50,6 +51,16 @@ pub const Plugin = struct {
             .voices = std.ArrayList(Voice).empty,
             .allocator = allocator,
         };
+
+        if (host.*.get_extension) |get_host_extension| {
+            const host_logger = std.zig.c_translation.cast(?*clap.clap_host_log, get_host_extension(host, &clap.CLAP_EXT_LOG));
+            if (host_logger) |logger| {
+                logging.log_context = .{
+                    .host = host,
+                    .host_log = logger.log.?,
+                };
+            }
+        }
 
         return &p.plugin;
     }

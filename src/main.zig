@@ -1,6 +1,7 @@
 const std = @import("std");
 const clap = @import("clap.zig").clap;
 const Plugin = @import("plugin.zig").Plugin;
+const logFn = @import("logging.zig").logFn;
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var allocator: std.mem.Allocator = undefined;
@@ -24,22 +25,6 @@ const pluginDescriptor = clap.clap_plugin_descriptor{
         null,
     },
 };
-
-fn logFn(
-    comptime level: std.log.Level,
-    comptime scope: @TypeOf(.EnumLiteral),
-    comptime format: []const u8,
-    args: anytype,
-) void {
-    // _ = level;
-    // _ = scope;
-    // _ = format;
-    // _ = args;
-    const scope_prefix = "(" ++ @tagName(scope) ++ "): ";
-    const prefix = "[" ++ comptime level.asText() ++ "] " ++ scope_prefix;
-
-    std.debug.print(prefix ++ format ++ "\n", args);
-}
 
 fn init(_: [*c]const u8) callconv(.c) bool {
     allocator = gpa.allocator();

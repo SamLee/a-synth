@@ -117,6 +117,10 @@ pub const Plugin = struct {
             return &parameters.extensionParams.extension;
         }
 
+        if (std.mem.orderZ(u8, id, &clap.CLAP_EXT_STATE) == .eq) {
+            return &extensionState.extension;
+        }
+
         return null;
     }
 
@@ -373,6 +377,114 @@ const extensionAudioPorts = struct {
             .in_place_pair = clap.CLAP_INVALID_ID,
         };
         _ = std.fmt.bufPrintZ(&info.*.name, "Audio Port", .{}) catch unreachable;
+        return true;
+    }
+};
+
+const extensionState = struct {
+    const log = std.log.scoped(.state);
+    const extension = clap.clap_plugin_state{
+        .load = load,
+        .save = save,
+    };
+
+    const State = blk: {
+        const fields = std.meta.fields(parameters.Params);
+        var reduced: [fields.len]std.builtin.Type.StructField = undefined;
+
+        for (fields, 0..) |field, i| {
+            const valueType = @TypeOf(@field(@as(parameters.Params, undefined), field.name).value);
+            reduced[i] = .{
+                .name = field.name,
+                .type = valueType,
+                .default_value_ptr = null,
+                .is_comptime = false,
+                .alignment = @alignOf(valueType),
+            };
+        }
+
+        break :blk @Type(.{ .@"struct" = .{
+            .layout = .auto,
+            .fields = &reduced,
+            .decls = &.{},
+            .is_tuple = false,
+        } });
+    };
+
+    fn save(
+        clap_plugin: [*c]const clap.clap_plugin,
+        stream: [*c]const clap.clap_ostream,
+    ) callconv(.c) bool {
+        log.info("saving state", .{});
+        const plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
+        const fields = std.meta.fields(@TypeOf(plugin.params));
+
+        var state: State = undefined;
+        inline for (fields) |field| {
+            @field(state, field.name) = @field(plugin.params, field.name).value;
+        }
+
+        var writer = std.Io.Writer.Allocating.initCapacity(plugin.allocator, 1024) catch unreachable;
+        defer writer.deinit();
+        std.zon.stringify.serialize(state, .{}, &writer.writer) catch unreachable;
+        const zon = writer.written();
+
+        var total_written: usize = 0;
+        while (total_written < zon.len) {
+            const left = zon[total_written..];
+            const bytes_written = stream.*.write.?(stream, @ptrCast(left.ptr), left.len);
+
+            if (bytes_written <= 0) {
+                log.err("failed to save state, error {}", .{bytes_written});
+            }
+
+            total_written += @intCast(bytes_written);
+        }
+
+        log.info("state saved: {} {s}", .{ total_written, zon });
+
+        return true;
+    }
+
+    fn load(
+        clap_plugin: [*c]const clap.clap_plugin,
+        stream: [*c]const clap.clap_istream,
+    ) callconv(.c) bool {
+        log.info("loading state", .{});
+        const plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
+
+        var data = std.ArrayList(u8).initCapacity(plugin.allocator, 1024) catch unreachable;
+        defer data.deinit(plugin.allocator);
+
+        var buf: [1024]u8 = undefined;
+        while (true) {
+            const bytes_read = stream.*.read.?(stream, @ptrCast(&buf), buf.len);
+
+            if (bytes_read < 0) {
+                log.err("failed to load state, error {}", .{bytes_read});
+                return false;
+            }
+
+            if (bytes_read == 0) break;
+
+            data.appendSlice(plugin.allocator, buf[0..@intCast(bytes_read)]) catch unreachable;
+        }
+        data.append(plugin.allocator, 0) catch unreachable;
+
+        const zon: [:0]u8 = data.items[0 .. data.items.len - 1 :0];
+        const state = std.zon.parse.fromSlice(State, plugin.allocator, zon, null, .{}) catch |err| {
+            log.err("failed to parse state: {}", .{err});
+            return false;
+        };
+        log.info("state loaded: {s}", .{zon});
+
+        const fields = std.meta.fields(@TypeOf(plugin.params));
+        inline for (fields) |field| {
+            @field(plugin.params, field.name).value = @field(state, field.name);
+        }
+
+        log.info("state loaded: {s}", .{zon});
+
         return true;
     }
 };

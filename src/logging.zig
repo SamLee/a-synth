@@ -15,10 +15,10 @@ pub fn logFn(
     args: anytype,
 ) void {
     if (log_context) |context| {
-        var buf: [1024]u8 = undefined;
+        var buf: [4098]u8 = undefined;
         const scope_prefix = "(" ++ @tagName(scope) ++ "): ";
         const prefix = "[" ++ comptime level.asText() ++ "] " ++ scope_prefix;
-        const msg = std.fmt.bufPrintZ(&buf, prefix ++ format ++ "\n", args) catch "[error] (logging): failed to format log message";
+        const msg = std.fmt.bufPrintZ(&buf, prefix ++ format, args) catch "[error] (logging): failed to format log message";
         const severity = switch (level) {
             .debug => clap.CLAP_LOG_DEBUG,
             .info => clap.CLAP_LOG_INFO,

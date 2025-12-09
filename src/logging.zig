@@ -20,7 +20,8 @@ pub fn logFn(
         const prefix = "[" ++ comptime level.asText() ++ "] " ++ scope_prefix;
         const msg = std.fmt.bufPrintZ(&buf, prefix ++ format, args) catch "[error] (logging): failed to format log message";
         const severity = switch (level) {
-            .debug => clap.CLAP_LOG_DEBUG,
+            // .debug => clap.CLAP_LOG_DEBUG,
+            .debug => clap.CLAP_LOG_INFO,
             .info => clap.CLAP_LOG_INFO,
             .warn => clap.CLAP_LOG_WARNING,
             .err => clap.CLAP_LOG_ERROR,

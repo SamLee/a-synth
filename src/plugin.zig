@@ -388,41 +388,13 @@ const extensionState = struct {
         .save = save,
     };
 
-    const State = blk: {
-        const fields = std.meta.fields(parameters.Params);
-        var reduced: [fields.len]std.builtin.Type.StructField = undefined;
-
-        for (fields, 0..) |field, i| {
-            const valueType = @TypeOf(@field(@as(parameters.Params, undefined), field.name).value);
-            reduced[i] = .{
-                .name = field.name,
-                .type = valueType,
-                .default_value_ptr = null,
-                .is_comptime = false,
-                .alignment = @alignOf(valueType),
-            };
-        }
-
-        break :blk @Type(.{ .@"struct" = .{
-            .layout = .auto,
-            .fields = &reduced,
-            .decls = &.{},
-            .is_tuple = false,
-        } });
-    };
-
     fn save(
         clap_plugin: [*c]const clap.clap_plugin,
         stream: [*c]const clap.clap_ostream,
     ) callconv(.c) bool {
         log.info("saving state", .{});
         const plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
-        const fields = std.meta.fields(@TypeOf(plugin.params));
-
-        var state: State = undefined;
-        inline for (fields) |field| {
-            @field(state, field.name) = @field(plugin.params, field.name).value;
-        }
+        const state = plugin.params.toState();
 
         var writer = std.Io.Writer.Allocating.initCapacity(plugin.allocator, 1024) catch unreachable;
         defer writer.deinit();
@@ -472,16 +444,13 @@ const extensionState = struct {
         data.append(plugin.allocator, 0) catch unreachable;
 
         const zon: [:0]u8 = data.items[0 .. data.items.len - 1 :0];
-        const state = std.zon.parse.fromSlice(State, plugin.allocator, zon, null, .{}) catch |err| {
+        const state = std.zon.parse.fromSlice(parameters.Params.State, plugin.allocator, zon, null, .{}) catch |err| {
             log.err("failed to parse state: {}", .{err});
             return false;
         };
         log.info("state loaded: {s}", .{zon});
 
-        const fields = std.meta.fields(@TypeOf(plugin.params));
-        inline for (fields) |field| {
-            @field(plugin.params, field.name).value = @field(state, field.name);
-        }
+        plugin.params.updateFromState(state);
 
         log.info("state loaded: {s}", .{zon});
 

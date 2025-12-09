@@ -166,6 +166,46 @@ pub const Params = struct {
             meta: ParamMeta,
         };
     }
+
+    pub const State = blk: {
+        const fields = std.meta.fields(Params);
+        var reduced: [fields.len]std.builtin.Type.StructField = undefined;
+
+        for (fields, 0..) |field, i| {
+            const valueType = @TypeOf(@field(@as(Params, undefined), field.name).value);
+            reduced[i] = .{
+                .name = field.name,
+                .type = valueType,
+                .default_value_ptr = null,
+                .is_comptime = false,
+                .alignment = @alignOf(valueType),
+            };
+        }
+
+        break :blk @Type(.{ .@"struct" = .{
+            .layout = .auto,
+            .fields = &reduced,
+            .decls = &.{},
+            .is_tuple = false,
+        } });
+    };
+
+    pub fn toState(params: Params) State {
+        const fields = std.meta.fields(Params);
+        var state: State = undefined;
+        inline for (fields) |field| {
+            @field(state, field.name) = @field(params, field.name).value;
+        }
+
+        return state;
+    }
+
+    pub fn updateFromState(params: *Params, state: State) void {
+        const fields = std.meta.fields(Params);
+        inline for (fields) |field| {
+            @field(params, field.name).value = @field(state, field.name);
+        }
+    }
 };
 
 pub fn handleEvent(event: clap.clap_event_param_value, params: *Params) void {

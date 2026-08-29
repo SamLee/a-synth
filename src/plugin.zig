@@ -1,5 +1,5 @@
 const std = @import("std");
-const clap = @import("clap.zig").clap;
+const clap = @import("clap.zig");
 const Envelope = @import("envelope.zig").Envelope;
 const parameters = @import("parameters.zig");
 const logging = @import("logging.zig");
@@ -24,6 +24,7 @@ pub const Plugin = struct {
     tailTime: f64 = 2.0 / 1000.0,
     allocator: std.mem.Allocator,
     params: parameters.Params = parameters.Params{},
+    rng: std.Random.DefaultPrng,
 
     pub fn create(
         host: [*c]const clap.clap_host,
@@ -31,6 +32,9 @@ pub const Plugin = struct {
         descriptor: *const clap.clap_plugin_descriptor,
     ) [*c]clap.clap_plugin {
         var p = allocator.create(Plugin) catch unreachable;
+
+        var seed: u64 = undefined;
+        std.Io.Threaded.global_single_threaded.io().random(std.mem.asBytes(&seed));
 
         p.* = .{
             .plugin = clap.clap_plugin{
@@ -50,10 +54,11 @@ pub const Plugin = struct {
             .host = host,
             .voices = std.ArrayList(Voice).empty,
             .allocator = allocator,
+            .rng = .init(seed),
         };
 
         if (host.*.get_extension) |get_host_extension| {
-            const host_logger = std.zig.c_translation.cast(?*clap.clap_host_log, get_host_extension(host, &clap.CLAP_EXT_LOG));
+            const host_logger = std.zig.c_translation.helpers.cast(?*clap.clap_host_log, get_host_extension(host, &clap.CLAP_EXT_LOG));
             if (host_logger) |logger| {
                 logging.log_context = .{
                     .host = host,
@@ -70,7 +75,7 @@ pub const Plugin = struct {
     }
 
     fn destroy(clap_plugin: [*c]const clap.clap_plugin) callconv(.c) void {
-        const plugin: *Plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
+        const plugin: *Plugin = std.zig.c_translation.helpers.cast(*Plugin, clap_plugin.*.plugin_data);
         plugin.voices.deinit(plugin.allocator);
         plugin.allocator.destroy(plugin);
     }
@@ -81,7 +86,7 @@ pub const Plugin = struct {
         minFramesCount: u32,
         maxFramesCount: u32,
     ) callconv(.c) bool {
-        const plugin: *Plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
+        const plugin: *Plugin = std.zig.c_translation.helpers.cast(*Plugin, clap_plugin.*.plugin_data);
         plugin.sampleRate = sampleRate;
         _ = minFramesCount;
         _ = maxFramesCount;
@@ -128,10 +133,16 @@ pub const Plugin = struct {
         clap_plugin: [*c]const clap.clap_plugin,
         clap_process: [*c]const clap.clap_process,
     ) callconv(.c) clap.clap_process_status {
-        const plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
+        const plugin = std.zig.c_translation.helpers.cast(*Plugin, clap_plugin.*.plugin_data);
 
-        if (clap_process.*.audio_inputs_count != 0) @panic("WHAT THE FUCK INPUTS");
-        if (clap_process.*.audio_outputs_count != 1) @panic("WHAT THE FUCK OUTPUTS");
+        if (clap_process.*.audio_inputs_count != 0) {
+            std.log.debug("what the fuck ins", .{});
+            @panic("WHAT THE FUCK INPUTS");
+        }
+        if (clap_process.*.audio_outputs_count != 1) {
+            std.log.debug("what the fuck outs", .{});
+            @panic("WHAT THE FUCK OUTPUTS");
+        }
 
         const frameCount = clap_process.*.frames_count;
         const eventCount = clap_process.*.in_events.*.size.?(clap_process.*.in_events);
@@ -199,7 +210,7 @@ pub const Plugin = struct {
                 event.*.type == clap.CLAP_EVENT_NOTE_OFF or
                 event.*.type == clap.CLAP_EVENT_NOTE_CHOKE)
             {
-                const noteEvent = std.zig.c_translation.cast([*c]clap.clap_event_note, event);
+                const noteEvent = std.zig.c_translation.helpers.cast([*c]clap.clap_event_note, event);
 
                 for (plugin.voices.items) |*voice| {
                     if ((noteEvent.*.key == -1 or voice.key == noteEvent.*.key) and
@@ -252,7 +263,7 @@ pub const Plugin = struct {
             }
 
             if (event.*.type == clap.CLAP_EVENT_PARAM_VALUE) {
-                const paramEvent = std.zig.c_translation.cast([*c]clap.clap_event_param_value, event);
+                const paramEvent = std.zig.c_translation.helpers.cast([*c]clap.clap_event_param_value, event);
                 parameters.handleEvent(paramEvent.*, &plugin.params);
             }
         }
@@ -265,6 +276,8 @@ pub const Plugin = struct {
         left: [*c]f32,
         right: [*c]f32,
     ) void {
+        const random = plugin.rng.random();
+
         for (start..end) |i| {
             var sum: f32 = 0;
 
@@ -293,11 +306,11 @@ pub const Plugin = struct {
                     .square => if (std.math.sin(voice.phase * std.math.tau) > 0.0) 1 else -1,
                     .saw => 2 * (voice.phase - std.math.floor(0.5 + voice.phase)),
                     .triangle => 4 * @abs(voice.phase - std.math.floor(voice.phase + 0.75) + 0.25) - 1,
-                    .noise => std.crypto.random.floatNorm(f32),
+                    .noise => random.floatNorm(f32),
                 };
 
                 if (plugin.params.highQuality.value == .off) {
-                    const noise = std.crypto.random.floatNorm(f32) / 200;
+                    const noise = random.floatNorm(f32) / 200;
                     val += noise;
                 }
 
@@ -346,7 +359,7 @@ const extensionNotePorts = struct {
         info.*.id = 0;
         info.*.preferred_dialect = clap.CLAP_NOTE_DIALECT_CLAP;
         info.*.supported_dialects = clap.CLAP_NOTE_DIALECT_CLAP;
-        _ = std.fmt.bufPrintZ(&info.*.name, "Note Port", .{}) catch unreachable;
+        _ = std.fmt.bufPrintZ(info.*.name[0..], "Note Port", .{}) catch unreachable;
         return true;
     }
 };
@@ -376,7 +389,7 @@ const extensionAudioPorts = struct {
             .port_type = &clap.CLAP_PORT_STEREO,
             .in_place_pair = clap.CLAP_INVALID_ID,
         };
-        _ = std.fmt.bufPrintZ(&info.*.name, "Audio Port", .{}) catch unreachable;
+        _ = std.fmt.bufPrintZ(info.*.name[0..], "Audio Port", .{}) catch unreachable;
         return true;
     }
 };
@@ -393,7 +406,7 @@ const extensionState = struct {
         stream: [*c]const clap.clap_ostream,
     ) callconv(.c) bool {
         log.info("saving state", .{});
-        const plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
+        const plugin = std.zig.c_translation.helpers.cast(*Plugin, clap_plugin.*.plugin_data);
         const state = plugin.params.toState();
 
         var writer = std.Io.Writer.Allocating.initCapacity(plugin.allocator, 1024) catch unreachable;
@@ -423,7 +436,7 @@ const extensionState = struct {
         stream: [*c]const clap.clap_istream,
     ) callconv(.c) bool {
         log.info("loading state", .{});
-        const plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
+        const plugin = std.zig.c_translation.helpers.cast(*Plugin, clap_plugin.*.plugin_data);
 
         var data = std.ArrayList(u8).initCapacity(plugin.allocator, 1024) catch unreachable;
         defer data.deinit(plugin.allocator);

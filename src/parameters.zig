@@ -1,5 +1,5 @@
 const std = @import("std");
-const clap = @import("clap.zig").clap;
+const clap = @import("clap.zig");
 const Plugin = @import("plugin.zig").Plugin;
 const log = std.log.scoped(.parameters);
 
@@ -169,25 +169,22 @@ pub const Params = struct {
 
     pub const State = blk: {
         const fields = std.meta.fields(Params);
-        var reduced: [fields.len]std.builtin.Type.StructField = undefined;
-
-        for (fields, 0..) |field, i| {
-            const valueType = @TypeOf(@field(@as(Params, undefined), field.name).value);
-            reduced[i] = .{
-                .name = field.name,
-                .type = valueType,
-                .default_value_ptr = null,
-                .is_comptime = false,
-                .alignment = @alignOf(valueType),
-            };
+        var field_names: [fields.len][]const u8 = undefined;
+        var field_types: [fields.len]type = undefined;
+        var field_attrs: [fields.len]std.builtin.Type.StructField.Attributes = undefined;
+        for (&field_names, &field_types, &field_attrs, fields) |*name, *T, *attrs, field| {
+            name.* = field.name;
+            T.* = @FieldType(field.type, "value");
+            attrs.* = .{};
         }
 
-        break :blk @Type(.{ .@"struct" = .{
-            .layout = .auto,
-            .fields = &reduced,
-            .decls = &.{},
-            .is_tuple = false,
-        } });
+        break :blk @Struct(
+            .auto,
+            null,
+            &field_names,
+            &field_types,
+            &field_attrs,
+        );
     };
 
     pub fn toState(params: Params) State {
@@ -250,7 +247,7 @@ pub const extensionParams = struct {
         in: [*c]const clap.clap_input_events,
         _: [*c]const clap.clap_output_events,
     ) callconv(.c) void {
-        const plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
+        const plugin = std.zig.c_translation.helpers.cast(*Plugin, clap_plugin.*.plugin_data);
         const eventCount = in.*.size.?(in);
         var eventIndex: u32 = 0;
 
@@ -264,7 +261,7 @@ pub const extensionParams = struct {
         param_index: u32,
         param_info: [*c]clap.clap_param_info,
     ) callconv(.c) bool {
-        const plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
+        const plugin = std.zig.c_translation.helpers.cast(*Plugin, clap_plugin.*.plugin_data);
         const typeInfo = std.meta.fields(Params);
         inline for (typeInfo, 0..) |field, index| {
             if (param_index == index) {
@@ -282,8 +279,8 @@ pub const extensionParams = struct {
                         else => @compileError(std.fmt.comptimePrint("UNEXPECTED TYPE {}", .{field.type})),
                     },
                 };
-                _ = std.fmt.bufPrintZ(&param_info.*.name, "{s}", .{param.meta.name}) catch unreachable;
-                _ = std.fmt.bufPrintZ(&param_info.*.module, "{s}", .{param.meta.module}) catch unreachable;
+                _ = std.fmt.bufPrintZ(param_info.*.name[0..], "{s}", .{param.meta.name}) catch unreachable;
+                _ = std.fmt.bufPrintZ(param_info.*.module[0..], "{s}", .{param.meta.module}) catch unreachable;
                 return true;
             }
         }
@@ -296,7 +293,7 @@ pub const extensionParams = struct {
         id: clap.clap_id,
         value: [*c]f64,
     ) callconv(.c) bool {
-        const plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
+        const plugin = std.zig.c_translation.helpers.cast(*Plugin, clap_plugin.*.plugin_data);
         const typeInfo = std.meta.fields(Params);
         inline for (typeInfo, 0..) |field, index| {
             if (id == index) {
@@ -326,7 +323,7 @@ pub const extensionParams = struct {
     ) callconv(.c) bool {
         const buf = out[0..size];
 
-        const plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
+        const plugin = std.zig.c_translation.helpers.cast(*Plugin, clap_plugin.*.plugin_data);
         const typeInfo = std.meta.fields(Params);
         inline for (typeInfo, 0..) |field, index| {
             if (id == index) {
@@ -357,7 +354,7 @@ pub const extensionParams = struct {
         in: [*c]const u8,
         out: [*c]f64,
     ) callconv(.c) bool {
-        const plugin = std.zig.c_translation.cast(*Plugin, clap_plugin.*.plugin_data);
+        const plugin = std.zig.c_translation.helpers.cast(*Plugin, clap_plugin.*.plugin_data);
         const typeInfo = std.meta.fields(Params);
         inline for (typeInfo, 0..) |field, index| {
             if (id == index) {

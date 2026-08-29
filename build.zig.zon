@@ -2,9 +2,7 @@
     .name = .zig_clap,
     .version = "0.0.0",
     .fingerprint = 0xad937d8cfe941b77,
-    .dependencies = .{
-        .clap = .{ .url = "https://github.com/free-audio/clap/archive/refs/tags/1.2.2.tar.gz", .hash = "12204f573701c6605bb3ce4f18c2a7ce1fe3be72fa643e59ea09e46b70c9131a3479" },
-    },
+    .dependencies = .{},
     .paths = .{
         "build.zig",
         "build.zig.zon",

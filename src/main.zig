@@ -1,9 +1,9 @@
 const std = @import("std");
-const clap = @import("clap.zig").clap;
+const clap = @import("clap.zig");
 const Plugin = @import("plugin.zig").Plugin;
 const logFn = @import("logging.zig").logFn;
 
-var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+var gpa = std.heap.DebugAllocator(.{}).init;
 var allocator: std.mem.Allocator = undefined;
 
 pub const std_options = std.Options{ .logFn = logFn };

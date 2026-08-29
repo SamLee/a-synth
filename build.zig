@@ -3,7 +3,6 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const clap = b.dependency("clap", .{});
 
     const plugin = b.addLibrary(.{
         .name = "a-synth.clap",
@@ -14,8 +13,6 @@ pub fn build(b: *std.Build) void {
         }),
         .linkage = .dynamic,
     });
-    plugin.addIncludePath(clap.path("include"));
-    plugin.addIncludePath(b.path("src/ui"));
     if (target.query.os_tag == .windows) plugin.subsystem = .Windows;
     b.installArtifact(plugin);
 

@@ -1,4 +1,4 @@
-const clap = @import("clap.zig").clap;
+const clap = @import("clap.zig");
 const std = @import("std");
 
 const LogContext = struct {
